@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Moo-ssage Board</title>
+  <script src="/cowsay.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+      --green: #3fb950; --red: #f85149; --red-bg: #3d1214; --accent: #7c3aed;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    header { display: flex; align-items: center; gap: 24px; padding: 20px 28px; border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; }
+    header .title { flex: 1; min-width: 260px; }
+    h1 { margin: 0; font-size: clamp(1.6rem, 3vw, 2.6rem); }
+    .sub { color: var(--muted); margin-top: 6px; font-size: 0.95rem; }
+    .sub code { color: var(--text); }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--green); margin-right: 6px; box-shadow: 0 0 8px var(--green); }
+    .dot.err { background: var(--red); box-shadow: 0 0 8px var(--red); }
+    .join { display: flex; align-items: center; gap: 16px; }
+    .join .url { font-family: ui-monospace, monospace; font-size: 1.1rem; }
+    .join .url b { display: block; font-family: inherit; color: var(--muted); font-size: 0.85rem; font-weight: 500; }
+    #qr { background: #fff; padding: 8px; border-radius: 8px; }
+    #qr img, #qr canvas { display: block; }
+
+    #blocked { display: none; margin: 20px 28px 0; padding: 18px 22px; border: 2px solid var(--red); border-radius: 12px; background: var(--red-bg); }
+    #blocked.show { display: block; animation: pulse 1.2s ease-out; }
+    #blocked h2 { margin: 0 0 8px; color: var(--red); font-size: clamp(1.3rem, 2.4vw, 2rem); }
+    #blocked .attempts { display: flex; flex-wrap: wrap; gap: 8px; }
+    #blocked .attempts span { font-family: ui-monospace, monospace; font-size: 0.9rem; padding: 4px 8px; border-radius: 6px; background: rgba(248,81,73,0.15); text-decoration: line-through; color: #ffa198; }
+    @keyframes pulse { 0% { transform: scale(1.04); box-shadow: 0 0 40px var(--red); } 100% { transform: scale(1); box-shadow: none; } }
+
+    main { padding: 24px 28px 48px; }
+    .meta { color: var(--muted); margin-bottom: 16px; }
+    #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 18px; align-items: start; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .card.new { animation: drop 0.6s cubic-bezier(.2,1.4,.4,1); border-color: var(--accent); }
+    @keyframes drop { from { transform: translateY(-24px) scale(0.96); opacity: 0; } to { transform: none; opacity: 1; } }
+    .card pre { margin: 0; padding: 14px 16px; font-size: 13px; line-height: 1.2; overflow-x: auto; }
+    .card .name { padding: 8px 16px; border-top: 1px solid var(--border); font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .empty { color: var(--muted); font-size: 1.2rem; text-align: center; padding: 60px 0; }
+    @media (max-width: 600px) {
+      header, main { padding-left: 16px; padding-right: 16px; }
+      #blocked { margin: 16px 16px 0; }
+      #grid { grid-template-columns: 1fr; }
+      .join #qr { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">
+      <h1>🐄 The Moo-ssage Board</h1>
+      <div class="sub"><span class="dot" id="dot"></span><span id="status">connecting…</span> · storage account <code id="account">…</code></div>
+    </div>
+    <div class="join">
+      <div id="qr"></div>
+      <div class="url"><b>Got the leaked key? Post here:</b><span id="hackUrl"></span></div>
+    </div>
+  </header>
+
+  <section id="blocked">
+    <h2>🔒 Key rotated · <span id="blockedCount">0</span> hack attempts blocked (HTTP 403)</h2>
+    <div class="attempts" id="attempts"></div>
+  </section>
+
+  <main>
+    <div class="meta" id="meta"></div>
+    <div id="grid"><div class="empty">No messages yet… somebody leak a key 👀</div></div>
+  </main>
+
+  <script>
+    const hackUrl = location.origin + "/hack";
+    document.getElementById("hackUrl").textContent = hackUrl.replace(/^https?:\/\//, "");
+    try { new QRCode(document.getElementById("qr"), { text: hackUrl, width: 120, height: 120 }); } catch (e) { document.getElementById("qr").style.display = "none"; }
+
+    const seen = new Set();
+    let firstLoad = true;
+    let lastBlocked = 0;
+
+    function card(m, isNew) {
+      const el = document.createElement("div");
+      el.className = "card" + (isNew ? " new" : "");
+      const pre = document.createElement("pre");
+      pre.textContent = Cowsay.say(m.cow, m.message);
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = "📄 " + m.name;
+      name.title = m.name;
+      el.append(pre, name);
+      return el;
+    }
+
+    async function refresh() {
+      const status = document.getElementById("status"), dot = document.getElementById("dot");
+      try {
+        const res = await fetch("/api/messages", { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.code || data.error || res.status);
+
+        document.getElementById("account").textContent = data.account;
+        status.textContent = "live · read via managed identity";
+        dot.className = "dot";
+
+        const grid = document.getElementById("grid");
+        if (data.messages.length) {
+          grid.replaceChildren(...data.messages.map((m) => {
+            const key = m.name + "|" + m.lastModified;
+            const isNew = !firstLoad && !seen.has(key);
+            seen.add(key);
+            return card(m, isNew);
+          }));
+        }
+        document.getElementById("meta").textContent = data.messages.length + " message" + (data.messages.length === 1 ? "" : "s") + " in blob storage";
+
+        const b = data.blocked;
+        const banner = document.getElementById("blocked");
+        if (b.count > 0) {
+          document.getElementById("blockedCount").textContent = b.count;
+          document.getElementById("attempts").replaceChildren(...b.recent.map((a) => {
+            const s = document.createElement("span");
+            s.textContent = (Cowsay.COWS[a.cow] ? Cowsay.COWS[a.cow].emoji + " " : "") + a.message;
+            return s;
+          }));
+          if (b.count !== lastBlocked) { banner.classList.remove("show"); void banner.offsetWidth; banner.classList.add("show"); }
+        } else {
+          banner.classList.remove("show");
+        }
+        lastBlocked = b.count;
+        firstLoad = false;
+      } catch (err) {
+        status.textContent = "board read failed: " + err.message;
+        dot.className = "dot err";
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 3000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Leaked Key Console</title>
+  <script src="/cowsay.js"></script>
+  <style>
+    :root {
+      --bg: #0a0f0a; --panel: #111a11; --border: #1f3a1f; --text: #d7ffd7; --muted: #7fa87f;
+      --green: #39ff14; --red: #ff4d4f; --red-bg: #2a0b0c;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+    .wrap { max-width: 640px; margin: 0 auto; padding: 20px 16px 40px; }
+    h1 { font-size: 1.4rem; margin: 0 0 6px; color: var(--green); text-shadow: 0 0 8px rgba(57,255,20,0.5); }
+    .lede { color: var(--muted); font-size: 0.9rem; margin: 0 0 18px; line-height: 1.4; }
+    .lede code { color: var(--text); background: var(--panel); padding: 1px 5px; border-radius: 4px; }
+    label { display: block; color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; margin: 16px 0 8px; }
+    .cows { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+    .cows button { font: inherit; font-size: 0.85rem; padding: 10px 6px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; }
+    .cows button span { display: block; font-size: 1.6rem; margin-bottom: 2px; }
+    .cows button[aria-pressed="true"] { border-color: var(--green); box-shadow: 0 0 0 1px var(--green), 0 0 12px rgba(57,255,20,0.35); }
+    textarea { width: 100%; font: inherit; font-size: 1rem; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); resize: vertical; min-height: 72px; }
+    textarea:focus { outline: none; border-color: var(--green); }
+    .count { text-align: right; color: var(--muted); font-size: 0.75rem; margin-top: 4px; }
+    pre { margin: 0; padding: 12px; border-radius: 10px; background: #000; border: 1px solid var(--border); font-size: 11px; line-height: 1.2; overflow-x: auto; min-height: 120px; }
+    .file { margin-top: 8px; font-size: 0.8rem; color: var(--muted); word-break: break-all; }
+    .file b { color: var(--text); font-weight: 500; }
+    #send { width: 100%; margin-top: 18px; font: inherit; font-size: 1.1rem; font-weight: 700; padding: 16px; border-radius: 12px; border: 0; background: var(--green); color: #031b03; cursor: pointer; }
+    #send:disabled { opacity: 0.5; cursor: wait; }
+    #result { margin-top: 18px; border-radius: 12px; padding: 16px; display: none; line-height: 1.4; }
+    #result.ok { display: block; background: rgba(57,255,20,0.08); border: 1px solid var(--green); }
+    #result.denied { display: block; background: var(--red-bg); border: 2px solid var(--red); animation: shake 0.4s; }
+    #result.denied h2 { color: var(--red); margin: 0 0 6px; font-size: 1.5rem; }
+    #result.err { display: block; background: var(--panel); border: 1px solid var(--muted); }
+    #result small { color: var(--muted); display: block; margin-top: 8px; word-break: break-word; }
+    @keyframes shake { 0%,100% { transform: none; } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🔑 You found a leaked storage key</h1>
+    <p class="lede">This page writes straight to Azure Blob Storage using <code>ACCESS_KEY</code> (Shared Key auth). Whatever you send becomes a file on the big screen. Pick a cow and go.</p>
+
+    <label>Character</label>
+    <div class="cows" id="cows"></div>
+
+    <label for="msg">Message</label>
+    <textarea id="msg" maxlength="120" placeholder="Terraform is my favorite infrastructure-as-cow tool"></textarea>
+    <div class="count"><span id="count">0</span>/120</div>
+
+    <label>Preview</label>
+    <pre id="preview"></pre>
+    <div class="file">blob name: <b id="file"></b></div>
+
+    <button id="send">🚀 Hijack the board</button>
+    <div id="result" role="status"></div>
+  </div>
+
+  <script>
+    let cow = "cow";
+    const msg = document.getElementById("msg");
+    const cows = document.getElementById("cows");
+
+    for (const [name, c] of Object.entries(Cowsay.COWS)) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.cow = name;
+      b.setAttribute("aria-pressed", String(name === cow));
+      const e = document.createElement("span");
+      e.textContent = c.emoji;
+      b.append(e, name);
+      b.onclick = () => {
+        cow = name;
+        cows.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.cow === cow)));
+        render();
+      };
+      cows.append(b);
+    }
+
+    function render() {
+      const text = msg.value.trim() || msg.placeholder;
+      document.getElementById("preview").textContent = Cowsay.say(cow, text);
+      document.getElementById("file").textContent = Cowsay.compose(cow, text, "xxxxxx");
+      document.getElementById("count").textContent = msg.value.length;
+    }
+    msg.addEventListener("input", render);
+    render();
+
+    const result = document.getElementById("result");
+    function show(kind, html) { result.className = kind; result.innerHTML = html; }
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    document.getElementById("send").onclick = async (ev) => {
+      const btn = ev.currentTarget;
+      const message = msg.value.trim();
+      if (!message) { msg.focus(); return; }
+      btn.disabled = true;
+      try {
+        const res = await fetch("/hack", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cow, message }) });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          show("ok", "✅ <b>Pwned.</b> Wrote <code>" + esc(data.name) + "</code> to blob storage. Look at the big screen 👀");
+          msg.value = "";
+          render();
+        } else if (res.status === 403) {
+          show("denied", "<h2>🚫 403 " + esc(data.code || "Forbidden") + "</h2>The leaked key doesn't work anymore. Someone rotated it with a <b>Terraform Action</b> 😎<small>" + esc(data.detail) + "</small>");
+        } else {
+          show("err", "⚠️ Storage said " + esc(data.status || res.status) + " " + esc(data.code || data.error || "") + "<small>" + esc(data.detail) + "</small>");
+        }
+      } catch (err) {
+        show("err", "⚠️ Network error: " + esc(err.message));
+      } finally {
+        setTimeout(() => (btn.disabled = false), 1200);
+      }
+    };
+  </script>
+</body>
+</html>

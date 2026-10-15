@@ -1,0 +1,9 @@
+{
+  "name": "moo-board",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hackable cowsay message board for the Terraform Actions key-rotation demo. Zero npm dependencies on purpose.",
+  "engines": {
+    "node": ">=20"
+  }
+}
